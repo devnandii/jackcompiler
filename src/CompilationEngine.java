@@ -2,9 +2,26 @@ public class CompilationEngine {
     private final JackTokenizer tokenizer;
     private final XmlWriter xml;
 
-    public CompilationEngine(JackTokenizer tokenizer, XmlWriter xml) {
+    private final SymbolTable symbolTable;
+    private final VMWriter vm;
+
+    private String className;
+    private String currentSubroutineName;
+    private String currentSubroutineKind;
+
+    public CompilationEngine(JackTokenizer tokenizer, XmlWriter xml) {  
+    this(tokenizer, xml, null);
+    }
+
+    public CompilationEngine(
+        JackTokenizer tokenizer,
+        XmlWriter xml,
+        VMWriter vm
+    ) {
         this.tokenizer = tokenizer;
         this.xml = xml;
+        this.vm = vm;
+        this.symbolTable = new SymbolTable();
     }
 
     // ==========================================================
@@ -33,108 +50,195 @@ public class CompilationEngine {
     // Regras da Gramática Jack
     // ==========================================================
 
+     
     public void compileClass() {
         xml.openTag("class");
+
         consume(TokenType.KEYWORD, "class");
+
+        // Guarda o nome da classe.
+        className = tokenizer.peek().lexeme;
         consume(TokenType.IDENTIFIER, "className");
+
         consume(TokenType.SYMBOL, "{");
 
-        while (match(TokenType.KEYWORD, "static") || match(TokenType.KEYWORD, "field")) {
+        // Declarações de variáveis da classe.
+        while (match(TokenType.KEYWORD, "static")
+                || match(TokenType.KEYWORD, "field")) {
             compileClassVarDec();
         }
 
-        while (match(TokenType.KEYWORD, "constructor") || match(TokenType.KEYWORD, "function") || match(TokenType.KEYWORD, "method")) {
+        // Declarações de funções, métodos e construtores.
+        while (match(TokenType.KEYWORD, "constructor")
+                || match(TokenType.KEYWORD, "function")
+                || match(TokenType.KEYWORD, "method")) {
             compileSubroutine();
         }
-        
+
         consume(TokenType.SYMBOL, "}");
         xml.closeTag("class");
     }
+   
 
-    public void compileClassVarDec() {
-        xml.openTag("classVarDec");
+    
+public void compileClassVarDec() {
+    xml.openTag("classVarDec");
+
+    String kindText = tokenizer.peek().lexeme;
+
+    SymbolTable.Kind kind = kindText.equals("static")
+        ? SymbolTable.Kind.STATIC
+        : SymbolTable.Kind.FIELD;
+
+    consume(TokenType.KEYWORD, "keyword");
+
+    String type = tokenizer.peek().lexeme;
+
+    if (match(TokenType.KEYWORD, "int")
+            || match(TokenType.KEYWORD, "char")
+            || match(TokenType.KEYWORD, "boolean")) {
+        consume(TokenType.KEYWORD, "type");
+    } else {
+        consume(TokenType.IDENTIFIER, "type (className)");
+    }
+
+    String name = tokenizer.peek().lexeme;
+    consume(TokenType.IDENTIFIER, "varName");
+
+    symbolTable.define(name, type, kind);
+
+    while (match(TokenType.SYMBOL, ",")) {
+        consume(TokenType.SYMBOL, ",");
+
+        name = tokenizer.peek().lexeme;
+        consume(TokenType.IDENTIFIER, "varName");
+
+        symbolTable.define(name, type, kind);
+    }
+
+    consume(TokenType.SYMBOL, ";");
+    xml.closeTag("classVarDec");
+}
+
+
         
-        if (match(TokenType.KEYWORD, "static") || match(TokenType.KEYWORD, "field")) {
-            consume(TokenType.KEYWORD, "keyword");
-        } else {
-            throw new RuntimeException("Esperado static ou field");
-        }
 
-        if (match(TokenType.KEYWORD, "int") || match(TokenType.KEYWORD, "char") || match(TokenType.KEYWORD, "boolean")) {
+    public void compileVarDec() {
+        xml.openTag("varDec");
+
+        consume(TokenType.KEYWORD, "var");
+
+        String type = tokenizer.peek().lexeme;
+
+        if (match(TokenType.KEYWORD, "int")
+                || match(TokenType.KEYWORD, "char")
+                || match(TokenType.KEYWORD, "boolean")) {
             consume(TokenType.KEYWORD, "type");
         } else {
             consume(TokenType.IDENTIFIER, "type (className)");
         }
 
+        String name = tokenizer.peek().lexeme;
         consume(TokenType.IDENTIFIER, "varName");
+
+        symbolTable.define(
+            name,
+            type,
+            SymbolTable.Kind.VAR
+        );
 
         while (match(TokenType.SYMBOL, ",")) {
             consume(TokenType.SYMBOL, ",");
+
+            name = tokenizer.peek().lexeme;
             consume(TokenType.IDENTIFIER, "varName");
+
+            symbolTable.define(
+                name,
+                type,
+                SymbolTable.Kind.VAR
+            );
         }
 
         consume(TokenType.SYMBOL, ";");
-        xml.closeTag("classVarDec");
+        xml.closeTag("varDec");
     }
+
 
     public void compileSubroutine() {
-        xml.openTag("subroutineDec");
+    xml.openTag("subroutineDec");
 
-        if (match(TokenType.KEYWORD, "constructor") || match(TokenType.KEYWORD, "function") || match(TokenType.KEYWORD, "method")) {
-            consume(TokenType.KEYWORD, "keyword");
-        } else {
-            throw new RuntimeException("Esperado constructor, function ou method");
-        }
+    currentSubroutineKind = tokenizer.peek().lexeme;
 
-        if (match(TokenType.KEYWORD, "void") || match(TokenType.KEYWORD, "int") || match(TokenType.KEYWORD, "char") || match(TokenType.KEYWORD, "boolean")) {
-            consume(TokenType.KEYWORD, "returnType");
-        } else {
-            consume(TokenType.IDENTIFIER, "returnType (className)");
-        }
+    symbolTable.startSubroutine();
 
-        consume(TokenType.IDENTIFIER, "subroutineName");
+    consume(TokenType.KEYWORD, "keyword");
 
-        consume(TokenType.SYMBOL, "(");
-        compileParameterList();
-        consume(TokenType.SYMBOL, ")");
-
-        compileSubroutineBody();
-
-        xml.closeTag("subroutineDec");
+    if (currentSubroutineKind.equals("method")) {
+        symbolTable.define(
+            "this",
+            className,
+            SymbolTable.Kind.ARG
+        );
     }
 
-    public void compileParameterList() {
-        xml.openTag("parameterList");
-        
-        if (!match(TokenType.SYMBOL, ")")) {
-            if (match(TokenType.KEYWORD, "int") || match(TokenType.KEYWORD, "char") || match(TokenType.KEYWORD, "boolean")) {
-                consume(TokenType.KEYWORD, "type");
-            } else {
-                consume(TokenType.IDENTIFIER, "type (className)");
-            }
-            consume(TokenType.IDENTIFIER, "varName");
-
-            while (match(TokenType.SYMBOL, ",")) {
-                consume(TokenType.SYMBOL, ",");
-                
-                if (match(TokenType.KEYWORD, "int") || match(TokenType.KEYWORD, "char") || match(TokenType.KEYWORD, "boolean")) {
-                    consume(TokenType.KEYWORD, "type");
-                } else {
-                    consume(TokenType.IDENTIFIER, "type (className)");
-                }
-                consume(TokenType.IDENTIFIER, "varName");
-            }
-        }
-        
-        xml.closeTag("parameterList");
+    if (match(TokenType.KEYWORD, "void")
+            || match(TokenType.KEYWORD, "int")
+            || match(TokenType.KEYWORD, "char")
+            || match(TokenType.KEYWORD, "boolean")) {
+        consume(TokenType.KEYWORD, "returnType");
+    } else {
+        consume(TokenType.IDENTIFIER, "returnType (className)");
     }
+
+    String subroutineName = tokenizer.peek().lexeme;
+    currentSubroutineName = className + "." + subroutineName;
+
+    consume(TokenType.IDENTIFIER, "subroutineName");
+
+    consume(TokenType.SYMBOL, "(");
+    compileParameterList();
+    consume(TokenType.SYMBOL, ")");
+
+    compileSubroutineBody();
+
+    xml.closeTag("subroutineDec");
+    }
+
+        
 
     public void compileSubroutineBody() {
         xml.openTag("subroutineBody");
+
         consume(TokenType.SYMBOL, "{");
 
         while (match(TokenType.KEYWORD, "var")) {
             compileVarDec();
+        }
+
+        // Gera o cabeçalho da função.
+        if (vm != null) {
+            vm.writeFunction(
+                currentSubroutineName,
+                symbolTable.varCount(SymbolTable.Kind.VAR)
+            );
+
+            // Construtor: aloca memória para os atributos da classe.
+            if (currentSubroutineKind.equals("constructor")) {
+                vm.writePush(
+                    "constant",
+                    symbolTable.varCount(SymbolTable.Kind.FIELD)
+                );
+
+                vm.writeCall("Memory.alloc", 1);
+                vm.writePop("pointer", 0);
+            }
+
+            // Método: configura o ponteiro this.
+            else if (currentSubroutineKind.equals("method")) {
+                vm.writePush("argument", 0);
+                vm.writePop("pointer", 0);
+            }
         }
 
         compileStatements();
@@ -143,27 +247,45 @@ public class CompilationEngine {
         xml.closeTag("subroutineBody");
     }
 
-    public void compileVarDec() {
-        xml.openTag("varDec");
         
-        consume(TokenType.KEYWORD, "var");
+    public void compileParameterList() {
+        xml.openTag("parameterList");
 
-        if (match(TokenType.KEYWORD, "int") || match(TokenType.KEYWORD, "char") || match(TokenType.KEYWORD, "boolean")) {
-            consume(TokenType.KEYWORD, "type");
-        } else {
-            consume(TokenType.IDENTIFIER, "type (className)");
+        if (!match(TokenType.SYMBOL, ")")) {
+            boolean moreParameters = true;
+
+            while (moreParameters) {
+                String type = tokenizer.peek().lexeme;
+
+                if (match(TokenType.KEYWORD, "int")
+                        || match(TokenType.KEYWORD, "char")
+                        || match(TokenType.KEYWORD, "boolean")) {
+                    consume(TokenType.KEYWORD, "type");
+                } else {
+                    consume(TokenType.IDENTIFIER, "type (className)");
+                }
+
+                String name = tokenizer.peek().lexeme;
+                consume(TokenType.IDENTIFIER, "varName");
+
+                symbolTable.define(
+                    name,
+                    type,
+                    SymbolTable.Kind.ARG
+                );
+
+                if (match(TokenType.SYMBOL, ",")) {
+                    consume(TokenType.SYMBOL, ",");
+                } else {
+                    moreParameters = false;
+                }
+            }
         }
 
-        consume(TokenType.IDENTIFIER, "varName");
-
-        while (match(TokenType.SYMBOL, ",")) {
-            consume(TokenType.SYMBOL, ",");
-            consume(TokenType.IDENTIFIER, "varName");
-        }
-
-        consume(TokenType.SYMBOL, ";");
-        xml.closeTag("varDec");
+        xml.closeTag("parameterList");
     }
+        
+        
 
     public void compileStatements() {
         xml.openTag("statements");
@@ -260,10 +382,10 @@ public class CompilationEngine {
         compileTerm();
         
         while (match(TokenType.SYMBOL, "+") || match(TokenType.SYMBOL, "-") ||
-               match(TokenType.SYMBOL, "*") || match(TokenType.SYMBOL, "/") ||
-               match(TokenType.SYMBOL, "&") || match(TokenType.SYMBOL, "|") ||
-               match(TokenType.SYMBOL, "<") || match(TokenType.SYMBOL, ">") ||
-               match(TokenType.SYMBOL, "=")) {
+                match(TokenType.SYMBOL, "*") || match(TokenType.SYMBOL, "/") ||
+                match(TokenType.SYMBOL, "&") || match(TokenType.SYMBOL, "|") ||
+                match(TokenType.SYMBOL, "<") || match(TokenType.SYMBOL, ">") ||
+                match(TokenType.SYMBOL, "=")) {
             
             consume(TokenType.SYMBOL, "op");
             compileTerm();
@@ -278,7 +400,7 @@ public class CompilationEngine {
             consume(tokenizer.peek().type, "const");
         } 
         else if (match(TokenType.KEYWORD, "true") || match(TokenType.KEYWORD, "false") || 
-                 match(TokenType.KEYWORD, "null") || match(TokenType.KEYWORD, "this")) {
+                    match(TokenType.KEYWORD, "null") || match(TokenType.KEYWORD, "this")) {
             consume(TokenType.KEYWORD, "keywordConstant");
         }
         else if (match(TokenType.SYMBOL, "(")) {
