@@ -46,6 +46,44 @@ public class CompilationEngine {
         tokenizer.advance();
     }
 
+    private void writePushVariable(String name) {
+    if (vm == null) {
+        return;
+    }
+
+    SymbolTable.Kind kind = symbolTable.kindOf(name);
+    int index = symbolTable.indexOf(name);
+
+    String segment;
+
+    switch (kind) {
+        case STATIC:
+            segment = "static";
+            break;
+        case FIELD:
+            segment = "this";
+            break;
+        case ARG:
+            segment = "argument";
+            break;
+        case VAR:
+            segment = "local";
+            break;
+        default:
+            throw new RuntimeException(
+                "Variável não declarada: " + name
+            );
+    }
+
+    vm.writePush(segment, index);
+    }
+
+    private void writeArithmetic(String command) {
+        if (vm != null) {
+            vm.writeArithmetic(command);
+        }
+    }
+
     // ==========================================================
     // Regras da Gramática Jack
     // ==========================================================
@@ -377,68 +415,212 @@ public void compileClassVarDec() {
         xml.closeTag("returnStatement");
     }
 
+    
     public void compileExpression() {
         xml.openTag("expression");
+
         compileTerm();
-        
-        while (match(TokenType.SYMBOL, "+") || match(TokenType.SYMBOL, "-") ||
-                match(TokenType.SYMBOL, "*") || match(TokenType.SYMBOL, "/") ||
-                match(TokenType.SYMBOL, "&") || match(TokenType.SYMBOL, "|") ||
-                match(TokenType.SYMBOL, "<") || match(TokenType.SYMBOL, ">") ||
-                match(TokenType.SYMBOL, "=")) {
-            
+
+        while (
+            match(TokenType.SYMBOL, "+")
+            || match(TokenType.SYMBOL, "-")
+            || match(TokenType.SYMBOL, "*")
+            || match(TokenType.SYMBOL, "/")
+            || match(TokenType.SYMBOL, "&")
+            || match(TokenType.SYMBOL, "|")
+            || match(TokenType.SYMBOL, "<")
+            || match(TokenType.SYMBOL, ">")
+            || match(TokenType.SYMBOL, "=")
+        ) {
+            String operator = tokenizer.peek().lexeme;
+
             consume(TokenType.SYMBOL, "op");
+
             compileTerm();
+
+            switch (operator) {
+                case "+":
+                    writeArithmetic("add");
+                    break;
+
+                case "-":
+                    writeArithmetic("sub");
+                    break;
+
+                case "*":
+                    if (vm != null) {
+                        vm.writeCall("Math.multiply", 2);
+                    }
+                    break;
+
+                case "/":
+                    if (vm != null) {
+                        vm.writeCall("Math.divide", 2);
+                    }
+                    break;
+
+                case "&":
+                    writeArithmetic("and");
+                    break;
+
+                case "|":
+                    writeArithmetic("or");
+                    break;
+
+                case "<":
+                    writeArithmetic("lt");
+                    break;
+
+                case ">":
+                    writeArithmetic("gt");
+                    break;
+
+                case "=":
+                    writeArithmetic("eq");
+                    break;
+            }
         }
+
         xml.closeTag("expression");
     }
 
+
+    
     public void compileTerm() {
         xml.openTag("term");
-        
-        if (match(TokenType.INT_CONST) || match(TokenType.STRING_CONST)) {
-            consume(tokenizer.peek().type, "const");
-        } 
-        else if (match(TokenType.KEYWORD, "true") || match(TokenType.KEYWORD, "false") || 
-                    match(TokenType.KEYWORD, "null") || match(TokenType.KEYWORD, "this")) {
-            consume(TokenType.KEYWORD, "keywordConstant");
+
+        // 1. Constante inteira
+        if (match(TokenType.INT_CONST)) {
+            int value = Integer.parseInt(tokenizer.peek().lexeme);
+
+            consume(TokenType.INT_CONST, "integerConstant");
+
+            if (vm != null) {
+                vm.writePush("constant", value);
+            }
         }
+
+        // 2. Constante string
+        else if (match(TokenType.STRING_CONST)) {
+            consume(TokenType.STRING_CONST, "stringConstant");
+
+            // A geração VM de strings será implementada posteriormente.
+        }
+
+        // 3. Constantes booleanas, null e this
+        else if (
+            match(TokenType.KEYWORD, "true")
+            || match(TokenType.KEYWORD, "false")
+            || match(TokenType.KEYWORD, "null")
+            || match(TokenType.KEYWORD, "this")
+        ) {
+            String keyword = tokenizer.peek().lexeme;
+
+            consume(TokenType.KEYWORD, "keywordConstant");
+
+            if (vm != null) {
+                switch (keyword) {
+                    case "true":
+                        vm.writePush("constant", 0);
+                        vm.writeArithmetic("not");
+                        break;
+
+                    case "false":
+                    case "null":
+                        vm.writePush("constant", 0);
+                        break;
+
+                    case "this":
+                        vm.writePush("pointer", 0);
+                        break;
+                }
+            }
+        }
+
+        // 4. Expressão entre parênteses
         else if (match(TokenType.SYMBOL, "(")) {
             consume(TokenType.SYMBOL, "(");
+
             compileExpression();
+
             consume(TokenType.SYMBOL, ")");
         }
-        else if (match(TokenType.SYMBOL, "-") || match(TokenType.SYMBOL, "~")) {
+
+        // 5. Operações unárias: - e ~
+        else if (
+            match(TokenType.SYMBOL, "-")
+            || match(TokenType.SYMBOL, "~")
+        ) {
+            String operator = tokenizer.peek().lexeme;
+
             consume(TokenType.SYMBOL, "unaryOp");
+
             compileTerm();
+
+            if (operator.equals("-")) {
+                writeArithmetic("neg");
+            } else {
+                writeArithmetic("not");
+            }
         }
+
+        // 6. Identificadores: variáveis, arrays e chamadas
         else if (match(TokenType.IDENTIFIER)) {
+            String name = tokenizer.peek().lexeme;
+
             consume(TokenType.IDENTIFIER, "varName");
-            
+
+            // Acesso a array: nome[indice]
             if (match(TokenType.SYMBOL, "[")) {
                 consume(TokenType.SYMBOL, "[");
+
                 compileExpression();
+
                 consume(TokenType.SYMBOL, "]");
+
+                // Geração VM de arrays será implementada posteriormente.
             }
+
+            // Chamada de método ou função: objeto.metodo(...)
             else if (match(TokenType.SYMBOL, ".")) {
                 consume(TokenType.SYMBOL, ".");
+
                 consume(TokenType.IDENTIFIER, "subroutineName");
+
                 consume(TokenType.SYMBOL, "(");
+
                 compileExpressionList();
+
                 consume(TokenType.SYMBOL, ")");
             }
+
+            // Chamada de função: funcao(...)
             else if (match(TokenType.SYMBOL, "(")) {
                 consume(TokenType.SYMBOL, "(");
+
                 compileExpressionList();
+
                 consume(TokenType.SYMBOL, ")");
             }
-        } 
-        else {
-            throw new RuntimeException("Termo inesperado: " + tokenizer.peek().lexeme);
+
+            // Variável simples
+            else {
+                writePushVariable(name);
+            }
         }
-        
+
+        else {
+            throw new RuntimeException(
+                "Termo inesperado: "
+                + (tokenizer.peek() == null
+                    ? "EOF"
+                    : tokenizer.peek().lexeme)
+            );
+        }
+
         xml.closeTag("term");
     }
+
 
     public void compileSubroutineCall() {
         consume(TokenType.IDENTIFIER, "subroutineName");
