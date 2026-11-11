@@ -1,0 +1,36 @@
+class Statements {
+    field Array data;
+
+    function void test(int n) {
+        var int i, sum;
+
+        let i = 0;
+        let sum = 0;
+
+        while (i < n) {
+            let sum = sum + i;
+            let i = i + 1;
+        }
+
+        if (sum > 0) {
+            do Output.printInt(sum);
+        } else {
+            let sum = 0;
+        }
+
+        return;
+    }
+
+    function int arrayRead(Array a, int index) {
+        return a[index];
+    }
+
+    function void arrayWrite(Array a, int index, int value) {
+        let a[index] = value;
+        return;
+    }
+
+    function String makeString() {
+        return "ok";
+    }
+}

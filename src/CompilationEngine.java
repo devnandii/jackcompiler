@@ -1,32 +1,24 @@
 public class CompilationEngine {
     private final JackTokenizer tokenizer;
     private final XmlWriter xml;
-
     private final SymbolTable symbolTable;
     private final VMWriter vm;
 
     private String className;
     private String currentSubroutineName;
     private String currentSubroutineKind;
+    private int labelCounter = 0;
 
-    public CompilationEngine(JackTokenizer tokenizer, XmlWriter xml) {  
-    this(tokenizer, xml, null);
+    public CompilationEngine(JackTokenizer tokenizer, XmlWriter xml) {
+        this(tokenizer, xml, null);
     }
 
-    public CompilationEngine(
-        JackTokenizer tokenizer,
-        XmlWriter xml,
-        VMWriter vm
-    ) {
+    public CompilationEngine(JackTokenizer tokenizer, XmlWriter xml, VMWriter vm) {
         this.tokenizer = tokenizer;
         this.xml = xml;
         this.vm = vm;
         this.symbolTable = new SymbolTable();
     }
-
-    // ==========================================================
-    // Métodos Auxiliares
-    // ==========================================================
 
     private boolean match(TokenType type) {
         return tokenizer.peek() != null && tokenizer.peek().type == type;
@@ -40,73 +32,69 @@ public class CompilationEngine {
         if (!match(type)) {
             String actual = tokenizer.peek() == null ? "EOF" : tokenizer.peek().lexeme;
             int line = tokenizer.peek() == null ? 0 : tokenizer.peek().line;
-            throw new RuntimeException("Esperado " + expected + " mas encontrado " + actual + " na linha " + line);
+            throw new RuntimeException(
+                "Esperado " + expected + " mas encontrado " + actual + " na linha " + line
+            );
         }
         xml.writeToken(tokenizer.peek());
         tokenizer.advance();
     }
 
     private void writePushVariable(String name) {
-    if (vm == null) {
-        return;
+        if (vm == null) return;
+
+        SymbolTable.Kind kind = symbolTable.kindOf(name);
+        int index = symbolTable.indexOf(name);
+        String segment;
+
+        switch (kind) {
+            case STATIC: segment = "static"; break;
+            case FIELD: segment = "this"; break;
+            case ARG: segment = "argument"; break;
+            case VAR: segment = "local"; break;
+            default:
+                throw new RuntimeException("Variável não declarada: " + name);
+        }
+        vm.writePush(segment, index);
     }
 
-    SymbolTable.Kind kind = symbolTable.kindOf(name);
-    int index = symbolTable.indexOf(name);
+    private void writePopVariable(String name) {
+        if (vm == null) return;
 
-    String segment;
+        SymbolTable.Kind kind = symbolTable.kindOf(name);
+        int index = symbolTable.indexOf(name);
+        String segment;
 
-    switch (kind) {
-        case STATIC:
-            segment = "static";
-            break;
-        case FIELD:
-            segment = "this";
-            break;
-        case ARG:
-            segment = "argument";
-            break;
-        case VAR:
-            segment = "local";
-            break;
-        default:
-            throw new RuntimeException(
-                "Variável não declarada: " + name
-            );
-    }
-
-    vm.writePush(segment, index);
+        switch (kind) {
+            case STATIC: segment = "static"; break;
+            case FIELD: segment = "this"; break;
+            case ARG: segment = "argument"; break;
+            case VAR: segment = "local"; break;
+            default:
+                throw new RuntimeException("Variável não declarada: " + name);
+        }
+        vm.writePop(segment, index);
     }
 
     private void writeArithmetic(String command) {
-        if (vm != null) {
-            vm.writeArithmetic(command);
-        }
+        if (vm != null) vm.writeArithmetic(command);
     }
 
-    // ==========================================================
-    // Regras da Gramática Jack
-    // ==========================================================
+    private String newLabel(String prefix) {
+        return prefix + labelCounter++;
+    }
 
-     
     public void compileClass() {
         xml.openTag("class");
-
         consume(TokenType.KEYWORD, "class");
-
-        // Guarda o nome da classe.
         className = tokenizer.peek().lexeme;
         consume(TokenType.IDENTIFIER, "className");
-
         consume(TokenType.SYMBOL, "{");
 
-        // Declarações de variáveis da classe.
-        while (match(TokenType.KEYWORD, "static")
-                || match(TokenType.KEYWORD, "field")) {
+        while (match(TokenType.KEYWORD, "static") || match(TokenType.KEYWORD, "field")) {
             compileClassVarDec();
         }
 
-        // Declarações de funções, métodos e construtores.
         while (match(TokenType.KEYWORD, "constructor")
                 || match(TokenType.KEYWORD, "function")
                 || match(TokenType.KEYWORD, "method")) {
@@ -116,60 +104,16 @@ public class CompilationEngine {
         consume(TokenType.SYMBOL, "}");
         xml.closeTag("class");
     }
-   
 
-    
-public void compileClassVarDec() {
-    xml.openTag("classVarDec");
-
-    String kindText = tokenizer.peek().lexeme;
-
-    SymbolTable.Kind kind = kindText.equals("static")
-        ? SymbolTable.Kind.STATIC
-        : SymbolTable.Kind.FIELD;
-
-    consume(TokenType.KEYWORD, "keyword");
-
-    String type = tokenizer.peek().lexeme;
-
-    if (match(TokenType.KEYWORD, "int")
-            || match(TokenType.KEYWORD, "char")
-            || match(TokenType.KEYWORD, "boolean")) {
-        consume(TokenType.KEYWORD, "type");
-    } else {
-        consume(TokenType.IDENTIFIER, "type (className)");
-    }
-
-    String name = tokenizer.peek().lexeme;
-    consume(TokenType.IDENTIFIER, "varName");
-
-    symbolTable.define(name, type, kind);
-
-    while (match(TokenType.SYMBOL, ",")) {
-        consume(TokenType.SYMBOL, ",");
-
-        name = tokenizer.peek().lexeme;
-        consume(TokenType.IDENTIFIER, "varName");
-
-        symbolTable.define(name, type, kind);
-    }
-
-    consume(TokenType.SYMBOL, ";");
-    xml.closeTag("classVarDec");
-}
-
-
-        
-
-    public void compileVarDec() {
-        xml.openTag("varDec");
-
-        consume(TokenType.KEYWORD, "var");
+    public void compileClassVarDec() {
+        xml.openTag("classVarDec");
+        String kindText = tokenizer.peek().lexeme;
+        SymbolTable.Kind kind = kindText.equals("static")
+            ? SymbolTable.Kind.STATIC : SymbolTable.Kind.FIELD;
+        consume(TokenType.KEYWORD, "keyword");
 
         String type = tokenizer.peek().lexeme;
-
-        if (match(TokenType.KEYWORD, "int")
-                || match(TokenType.KEYWORD, "char")
+        if (match(TokenType.KEYWORD, "int") || match(TokenType.KEYWORD, "char")
                 || match(TokenType.KEYWORD, "boolean")) {
             consume(TokenType.KEYWORD, "type");
         } else {
@@ -178,221 +122,234 @@ public void compileClassVarDec() {
 
         String name = tokenizer.peek().lexeme;
         consume(TokenType.IDENTIFIER, "varName");
-
-        symbolTable.define(
-            name,
-            type,
-            SymbolTable.Kind.VAR
-        );
+        symbolTable.define(name, type, kind);
 
         while (match(TokenType.SYMBOL, ",")) {
             consume(TokenType.SYMBOL, ",");
-
             name = tokenizer.peek().lexeme;
             consume(TokenType.IDENTIFIER, "varName");
-
-            symbolTable.define(
-                name,
-                type,
-                SymbolTable.Kind.VAR
-            );
+            symbolTable.define(name, type, kind);
         }
 
         consume(TokenType.SYMBOL, ";");
-        xml.closeTag("varDec");
+        xml.closeTag("classVarDec");
     }
-
 
     public void compileSubroutine() {
-    xml.openTag("subroutineDec");
+        xml.openTag("subroutineDec");
+        currentSubroutineKind = tokenizer.peek().lexeme;
+        symbolTable.startSubroutine();
 
-    currentSubroutineKind = tokenizer.peek().lexeme;
+        consume(TokenType.KEYWORD, "keyword");
 
-    symbolTable.startSubroutine();
+        if (currentSubroutineKind.equals("method")) {
+            symbolTable.define("this", className, SymbolTable.Kind.ARG);
+        }
 
-    consume(TokenType.KEYWORD, "keyword");
+        if (match(TokenType.KEYWORD, "void") || match(TokenType.KEYWORD, "int")
+                || match(TokenType.KEYWORD, "char") || match(TokenType.KEYWORD, "boolean")) {
+            consume(TokenType.KEYWORD, "returnType");
+        } else {
+            consume(TokenType.IDENTIFIER, "returnType (className)");
+        }
 
-    if (currentSubroutineKind.equals("method")) {
-        symbolTable.define(
-            "this",
-            className,
-            SymbolTable.Kind.ARG
-        );
+        String subroutineName = tokenizer.peek().lexeme;
+        currentSubroutineName = className + "." + subroutineName;
+        consume(TokenType.IDENTIFIER, "subroutineName");
+
+        consume(TokenType.SYMBOL, "(");
+        compileParameterList();
+        consume(TokenType.SYMBOL, ")");
+        compileSubroutineBody();
+
+        xml.closeTag("subroutineDec");
     }
-
-    if (match(TokenType.KEYWORD, "void")
-            || match(TokenType.KEYWORD, "int")
-            || match(TokenType.KEYWORD, "char")
-            || match(TokenType.KEYWORD, "boolean")) {
-        consume(TokenType.KEYWORD, "returnType");
-    } else {
-        consume(TokenType.IDENTIFIER, "returnType (className)");
-    }
-
-    String subroutineName = tokenizer.peek().lexeme;
-    currentSubroutineName = className + "." + subroutineName;
-
-    consume(TokenType.IDENTIFIER, "subroutineName");
-
-    consume(TokenType.SYMBOL, "(");
-    compileParameterList();
-    consume(TokenType.SYMBOL, ")");
-
-    compileSubroutineBody();
-
-    xml.closeTag("subroutineDec");
-    }
-
-        
 
     public void compileSubroutineBody() {
         xml.openTag("subroutineBody");
-
         consume(TokenType.SYMBOL, "{");
 
-        while (match(TokenType.KEYWORD, "var")) {
-            compileVarDec();
-        }
+        while (match(TokenType.KEYWORD, "var")) compileVarDec();
 
-        // Gera o cabeçalho da função.
         if (vm != null) {
-            vm.writeFunction(
-                currentSubroutineName,
-                symbolTable.varCount(SymbolTable.Kind.VAR)
-            );
+            vm.writeFunction(currentSubroutineName, symbolTable.varCount(SymbolTable.Kind.VAR));
 
-            // Construtor: aloca memória para os atributos da classe.
             if (currentSubroutineKind.equals("constructor")) {
-                vm.writePush(
-                    "constant",
-                    symbolTable.varCount(SymbolTable.Kind.FIELD)
-                );
-
+                vm.writePush("constant", symbolTable.varCount(SymbolTable.Kind.FIELD));
                 vm.writeCall("Memory.alloc", 1);
                 vm.writePop("pointer", 0);
-            }
-
-            // Método: configura o ponteiro this.
-            else if (currentSubroutineKind.equals("method")) {
+            } else if (currentSubroutineKind.equals("method")) {
                 vm.writePush("argument", 0);
                 vm.writePop("pointer", 0);
             }
         }
 
         compileStatements();
-
         consume(TokenType.SYMBOL, "}");
         xml.closeTag("subroutineBody");
     }
 
-        
     public void compileParameterList() {
         xml.openTag("parameterList");
-
-        if (!match(TokenType.SYMBOL, ")")) {
-            boolean moreParameters = true;
-
-            while (moreParameters) {
-                String type = tokenizer.peek().lexeme;
-
-                if (match(TokenType.KEYWORD, "int")
-                        || match(TokenType.KEYWORD, "char")
-                        || match(TokenType.KEYWORD, "boolean")) {
-                    consume(TokenType.KEYWORD, "type");
-                } else {
-                    consume(TokenType.IDENTIFIER, "type (className)");
-                }
-
-                String name = tokenizer.peek().lexeme;
-                consume(TokenType.IDENTIFIER, "varName");
-
-                symbolTable.define(
-                    name,
-                    type,
-                    SymbolTable.Kind.ARG
-                );
-
-                if (match(TokenType.SYMBOL, ",")) {
-                    consume(TokenType.SYMBOL, ",");
-                } else {
-                    moreParameters = false;
-                }
+        while (!match(TokenType.SYMBOL, ")")) {
+            String type = tokenizer.peek().lexeme;
+            if (match(TokenType.KEYWORD, "int") || match(TokenType.KEYWORD, "char")
+                    || match(TokenType.KEYWORD, "boolean")) {
+                consume(TokenType.KEYWORD, "type");
+            } else {
+                consume(TokenType.IDENTIFIER, "type (className)");
             }
-        }
 
+            String name = tokenizer.peek().lexeme;
+            consume(TokenType.IDENTIFIER, "varName");
+            symbolTable.define(name, type, SymbolTable.Kind.ARG);
+
+            if (match(TokenType.SYMBOL, ",")) consume(TokenType.SYMBOL, ",");
+            else break;
+        }
         xml.closeTag("parameterList");
     }
-        
-        
+
+    public void compileVarDec() {
+        xml.openTag("varDec");
+        consume(TokenType.KEYWORD, "var");
+
+        String type = tokenizer.peek().lexeme;
+        if (match(TokenType.KEYWORD, "int") || match(TokenType.KEYWORD, "char")
+                || match(TokenType.KEYWORD, "boolean")) {
+            consume(TokenType.KEYWORD, "type");
+        } else {
+            consume(TokenType.IDENTIFIER, "type (className)");
+        }
+
+        String name = tokenizer.peek().lexeme;
+        consume(TokenType.IDENTIFIER, "varName");
+        symbolTable.define(name, type, SymbolTable.Kind.VAR);
+
+        while (match(TokenType.SYMBOL, ",")) {
+            consume(TokenType.SYMBOL, ",");
+            name = tokenizer.peek().lexeme;
+            consume(TokenType.IDENTIFIER, "varName");
+            symbolTable.define(name, type, SymbolTable.Kind.VAR);
+        }
+
+        consume(TokenType.SYMBOL, ";");
+        xml.closeTag("varDec");
+    }
 
     public void compileStatements() {
         xml.openTag("statements");
-
-        boolean hasStatement = true;
-        while (hasStatement) {
-            if (match(TokenType.KEYWORD, "let")) {
-                compileLet();
-            } else if (match(TokenType.KEYWORD, "if")) {
-                compileIf();
-            } else if (match(TokenType.KEYWORD, "while")) {
-                compileWhile();
-            } else if (match(TokenType.KEYWORD, "do")) {
-                compileDo();
-            } else if (match(TokenType.KEYWORD, "return")) {
-                compileReturn();
-            } else {
-                hasStatement = false;
-            }
+        while (true) {
+            if (match(TokenType.KEYWORD, "let")) compileLet();
+            else if (match(TokenType.KEYWORD, "if")) compileIf();
+            else if (match(TokenType.KEYWORD, "while")) compileWhile();
+            else if (match(TokenType.KEYWORD, "do")) compileDo();
+            else if (match(TokenType.KEYWORD, "return")) compileReturn();
+            else break;
         }
-
         xml.closeTag("statements");
     }
 
     public void compileLet() {
         xml.openTag("letStatement");
         consume(TokenType.KEYWORD, "let");
+
+        String name = tokenizer.peek().lexeme;
         consume(TokenType.IDENTIFIER, "varName");
-        
-        if (match(TokenType.SYMBOL, "[")) {
+
+        boolean isArray = match(TokenType.SYMBOL, "[");
+        if (isArray) {
+            writePushVariable(name);
             consume(TokenType.SYMBOL, "[");
             compileExpression();
             consume(TokenType.SYMBOL, "]");
+            writeArithmetic("add");
         }
-        
+
         consume(TokenType.SYMBOL, "=");
         compileExpression();
         consume(TokenType.SYMBOL, ";");
+
+        if (isArray) {
+            if (vm != null) {
+                vm.writePop("temp", 0);
+                vm.writePop("pointer", 1);
+                vm.writePush("temp", 0);
+                vm.writePop("that", 0);
+            }
+        } else {
+            writePopVariable(name);
+        }
+
         xml.closeTag("letStatement");
     }
 
     public void compileIf() {
         xml.openTag("ifStatement");
+        String trueLabel = newLabel("IF_TRUE");
+        String falseLabel = newLabel("IF_FALSE");
+        String endLabel = newLabel("IF_END");
+
         consume(TokenType.KEYWORD, "if");
         consume(TokenType.SYMBOL, "(");
         compileExpression();
         consume(TokenType.SYMBOL, ")");
+
+        if (vm != null) {
+            vm.writeIf(trueLabel);
+            vm.writeGoto(falseLabel);
+            vm.writeLabel(trueLabel);
+        }
+
         consume(TokenType.SYMBOL, "{");
         compileStatements();
         consume(TokenType.SYMBOL, "}");
-        
+
         if (match(TokenType.KEYWORD, "else")) {
+            if (vm != null) {
+                vm.writeGoto(endLabel);
+                vm.writeLabel(falseLabel);
+            }
             consume(TokenType.KEYWORD, "else");
             consume(TokenType.SYMBOL, "{");
             compileStatements();
             consume(TokenType.SYMBOL, "}");
+            if (vm != null) {
+                vm.writeLabel(endLabel);
+            }
+        } else if (vm != null) {
+            vm.writeLabel(falseLabel);
         }
+
         xml.closeTag("ifStatement");
     }
 
     public void compileWhile() {
         xml.openTag("whileStatement");
+        String startLabel = newLabel("WHILE_EXP");
+        String endLabel = newLabel("WHILE_END");
+
+        if (vm != null) vm.writeLabel(startLabel);
+
         consume(TokenType.KEYWORD, "while");
         consume(TokenType.SYMBOL, "(");
         compileExpression();
         consume(TokenType.SYMBOL, ")");
+
+        if (vm != null) {
+            vm.writeArithmetic("not");
+            vm.writeIf(endLabel);
+        }
+
         consume(TokenType.SYMBOL, "{");
         compileStatements();
         consume(TokenType.SYMBOL, "}");
+
+        if (vm != null) {
+            vm.writeGoto(startLabel);
+            vm.writeLabel(endLabel);
+        }
+
         xml.closeTag("whileStatement");
     }
 
@@ -401,251 +358,184 @@ public void compileClassVarDec() {
         consume(TokenType.KEYWORD, "do");
         compileSubroutineCall();
         consume(TokenType.SYMBOL, ";");
+        if (vm != null) vm.writePop("temp", 0);
         xml.closeTag("doStatement");
     }
 
     public void compileReturn() {
         xml.openTag("returnStatement");
         consume(TokenType.KEYWORD, "return");
-        
-        if (!match(TokenType.SYMBOL, ";")) {
+
+        if (match(TokenType.SYMBOL, ";")) {
+            if (vm != null) vm.writePush("constant", 0);
+        } else {
             compileExpression();
         }
+
         consume(TokenType.SYMBOL, ";");
+        if (vm != null) vm.writeReturn();
         xml.closeTag("returnStatement");
     }
 
-    
     public void compileExpression() {
         xml.openTag("expression");
-
         compileTerm();
 
-        while (
-            match(TokenType.SYMBOL, "+")
-            || match(TokenType.SYMBOL, "-")
-            || match(TokenType.SYMBOL, "*")
-            || match(TokenType.SYMBOL, "/")
-            || match(TokenType.SYMBOL, "&")
-            || match(TokenType.SYMBOL, "|")
-            || match(TokenType.SYMBOL, "<")
-            || match(TokenType.SYMBOL, ">")
-            || match(TokenType.SYMBOL, "=")
-        ) {
+        while (match(TokenType.SYMBOL, "+") || match(TokenType.SYMBOL, "-")
+                || match(TokenType.SYMBOL, "*") || match(TokenType.SYMBOL, "/")
+                || match(TokenType.SYMBOL, "&") || match(TokenType.SYMBOL, "|")
+                || match(TokenType.SYMBOL, "<") || match(TokenType.SYMBOL, ">")
+                || match(TokenType.SYMBOL, "=")) {
             String operator = tokenizer.peek().lexeme;
-
             consume(TokenType.SYMBOL, "op");
-
             compileTerm();
 
             switch (operator) {
-                case "+":
-                    writeArithmetic("add");
-                    break;
-
-                case "-":
-                    writeArithmetic("sub");
-                    break;
-
-                case "*":
-                    if (vm != null) {
-                        vm.writeCall("Math.multiply", 2);
-                    }
-                    break;
-
-                case "/":
-                    if (vm != null) {
-                        vm.writeCall("Math.divide", 2);
-                    }
-                    break;
-
-                case "&":
-                    writeArithmetic("and");
-                    break;
-
-                case "|":
-                    writeArithmetic("or");
-                    break;
-
-                case "<":
-                    writeArithmetic("lt");
-                    break;
-
-                case ">":
-                    writeArithmetic("gt");
-                    break;
-
-                case "=":
-                    writeArithmetic("eq");
-                    break;
+                case "+": writeArithmetic("add"); break;
+                case "-": writeArithmetic("sub"); break;
+                case "*": if (vm != null) vm.writeCall("Math.multiply", 2); break;
+                case "/": if (vm != null) vm.writeCall("Math.divide", 2); break;
+                case "&": writeArithmetic("and"); break;
+                case "|": writeArithmetic("or"); break;
+                case "<": writeArithmetic("lt"); break;
+                case ">": writeArithmetic("gt"); break;
+                case "=": writeArithmetic("eq"); break;
             }
         }
-
         xml.closeTag("expression");
     }
 
-
-    
     public void compileTerm() {
         xml.openTag("term");
 
-        // 1. Constante inteira
         if (match(TokenType.INT_CONST)) {
             int value = Integer.parseInt(tokenizer.peek().lexeme);
-
             consume(TokenType.INT_CONST, "integerConstant");
+            if (vm != null) vm.writePush("constant", value);
 
-            if (vm != null) {
-                vm.writePush("constant", value);
-            }
-        }
-
-        // 2. Constante string
-        else if (match(TokenType.STRING_CONST)) {
+        } else if (match(TokenType.STRING_CONST)) {
+            String value = tokenizer.peek().lexeme;
             consume(TokenType.STRING_CONST, "stringConstant");
-
-            // A geração VM de strings será implementada posteriormente.
-        }
-
-        // 3. Constantes booleanas, null e this
-        else if (
-            match(TokenType.KEYWORD, "true")
-            || match(TokenType.KEYWORD, "false")
-            || match(TokenType.KEYWORD, "null")
-            || match(TokenType.KEYWORD, "this")
-        ) {
-            String keyword = tokenizer.peek().lexeme;
-
-            consume(TokenType.KEYWORD, "keywordConstant");
-
             if (vm != null) {
-                switch (keyword) {
-                    case "true":
-                        vm.writePush("constant", 0);
-                        vm.writeArithmetic("not");
-                        break;
-
-                    case "false":
-                    case "null":
-                        vm.writePush("constant", 0);
-                        break;
-
-                    case "this":
-                        vm.writePush("pointer", 0);
-                        break;
+                vm.writePush("constant", value.length());
+                vm.writeCall("String.new", 1);
+                for (int i = 0; i < value.length(); i++) {
+                    vm.writePush("constant", (int) value.charAt(i));
+                    vm.writeCall("String.appendChar", 2);
                 }
             }
-        }
 
-        // 4. Expressão entre parênteses
-        else if (match(TokenType.SYMBOL, "(")) {
+        } else if (match(TokenType.KEYWORD, "true") || match(TokenType.KEYWORD, "false")
+                || match(TokenType.KEYWORD, "null") || match(TokenType.KEYWORD, "this")) {
+            String keyword = tokenizer.peek().lexeme;
+            consume(TokenType.KEYWORD, "keywordConstant");
+            if (vm != null) {
+                if (keyword.equals("true")) {
+                    vm.writePush("constant", 0);
+                    vm.writeArithmetic("not");
+                } else if (keyword.equals("this")) {
+                    vm.writePush("pointer", 0);
+                } else {
+                    vm.writePush("constant", 0);
+                }
+            }
+
+        } else if (match(TokenType.SYMBOL, "(")) {
             consume(TokenType.SYMBOL, "(");
-
             compileExpression();
-
             consume(TokenType.SYMBOL, ")");
-        }
 
-        // 5. Operações unárias: - e ~
-        else if (
-            match(TokenType.SYMBOL, "-")
-            || match(TokenType.SYMBOL, "~")
-        ) {
+        } else if (match(TokenType.SYMBOL, "-") || match(TokenType.SYMBOL, "~")) {
             String operator = tokenizer.peek().lexeme;
-
             consume(TokenType.SYMBOL, "unaryOp");
-
             compileTerm();
+            writeArithmetic(operator.equals("-") ? "neg" : "not");
 
-            if (operator.equals("-")) {
-                writeArithmetic("neg");
-            } else {
-                writeArithmetic("not");
-            }
-        }
-
-        // 6. Identificadores: variáveis, arrays e chamadas
-        else if (match(TokenType.IDENTIFIER)) {
+        } else if (match(TokenType.IDENTIFIER)) {
             String name = tokenizer.peek().lexeme;
+            consume(TokenType.IDENTIFIER, "identifier");
 
-            consume(TokenType.IDENTIFIER, "varName");
-
-            // Acesso a array: nome[indice]
             if (match(TokenType.SYMBOL, "[")) {
+                writePushVariable(name);
                 consume(TokenType.SYMBOL, "[");
-
                 compileExpression();
-
                 consume(TokenType.SYMBOL, "]");
+                if (vm != null) {
+                    vm.writeArithmetic("add");
+                    vm.writePop("pointer", 1);
+                    vm.writePush("that", 0);
+                }
 
-                // Geração VM de arrays será implementada posteriormente.
-            }
+            } else if (match(TokenType.SYMBOL, ".") || match(TokenType.SYMBOL, "(")) {
+                compileSubroutineCallAfterName(name);
 
-            // Chamada de método ou função: objeto.metodo(...)
-            else if (match(TokenType.SYMBOL, ".")) {
-                consume(TokenType.SYMBOL, ".");
-
-                consume(TokenType.IDENTIFIER, "subroutineName");
-
-                consume(TokenType.SYMBOL, "(");
-
-                compileExpressionList();
-
-                consume(TokenType.SYMBOL, ")");
-            }
-
-            // Chamada de função: funcao(...)
-            else if (match(TokenType.SYMBOL, "(")) {
-                consume(TokenType.SYMBOL, "(");
-
-                compileExpressionList();
-
-                consume(TokenType.SYMBOL, ")");
-            }
-
-            // Variável simples
-            else {
+            } else {
                 writePushVariable(name);
             }
-        }
 
-        else {
+        } else {
             throw new RuntimeException(
-                "Termo inesperado: "
-                + (tokenizer.peek() == null
-                    ? "EOF"
-                    : tokenizer.peek().lexeme)
+                "Termo inesperado: " + (tokenizer.peek() == null ? "EOF" : tokenizer.peek().lexeme)
             );
         }
 
         xml.closeTag("term");
     }
 
-
     public void compileSubroutineCall() {
+        String name = tokenizer.peek().lexeme;
         consume(TokenType.IDENTIFIER, "subroutineName");
-        
+        compileSubroutineCallAfterName(name);
+    }
+
+    private void compileSubroutineCallAfterName(String name) {
+        String callName;
+        int nArgs = 0;
+
         if (match(TokenType.SYMBOL, ".")) {
             consume(TokenType.SYMBOL, ".");
+            String subroutineName = tokenizer.peek().lexeme;
             consume(TokenType.IDENTIFIER, "subroutineName");
+
+            if (symbolTable.kindOf(name) != SymbolTable.Kind.NONE) {
+                writePushVariable(name);
+                nArgs++;
+                callName = symbolTable.typeOf(name) + "." + subroutineName;
+            } else {
+                callName = name + "." + subroutineName;
+            }
+        } else {
+            if (vm != null) vm.writePush("pointer", 0);
+            nArgs++;
+            callName = className + "." + name;
         }
-        
+
         consume(TokenType.SYMBOL, "(");
-        compileExpressionList();
+        nArgs += compileExpressionListAndCount();
         consume(TokenType.SYMBOL, ")");
+
+        if (vm != null) vm.writeCall(callName, nArgs);
     }
 
     public void compileExpressionList() {
+        compileExpressionListAndCount();
+    }
+
+    private int compileExpressionListAndCount() {
         xml.openTag("expressionList");
-        
+        int count = 0;
+
         if (!match(TokenType.SYMBOL, ")")) {
             compileExpression();
+            count++;
             while (match(TokenType.SYMBOL, ",")) {
                 consume(TokenType.SYMBOL, ",");
                 compileExpression();
+                count++;
             }
         }
-        
+
         xml.closeTag("expressionList");
+        return count;
     }
 }
