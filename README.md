@@ -89,21 +89,21 @@ Todos os programas foram compilados com `java -cp bin Main <pasta>` e executados
 | Etapa | Programa | O que exercita | Resultado esperado | Resultado |
 | --- | --- | --- | --- | --- |
 | 1 | Seven | expressão aritmética, `do`, chamada ao SO | imprime `7` | ✅ |
-<img src="assets/validacao/seven.png" alt="Seven no VM Emulator" width="70%">
+<img src="assets/validacao/seven.png" alt="Seven no VM Emulator" width="20%">
 
 | 1 | ConvertToBin | `while`, `if` aninhados, `&`, `~` | `RAM[8001..8016]` com 0 ou 1, sem `-1` | ✅ |
 
 | 2 | Square | construtores, métodos, campos, várias classes | quadrado move com as setas, `z`/`x` mudam o tamanho | ✅ |
-<img src="assets/validacao/square.png" alt="Square no VM Emulator" width="70%">
+<img src="assets/validacao/square.png" alt="Square no VM Emulator" width="30%">
 
 | 2 | Average | arrays, strings constantes, teclado | pede N números e imprime a média | ✅ |
-<img src="assets/validacao/average.jpg" alt="Average no VM Emulator" width="70%">
+<img src="assets/validacao/average.jpg" alt="Average no VM Emulator" width="30%">
 
 | 2 | Pong | programa orientado a objetos completo | bola, raquete e placar funcionando | ✅ |
-<img src="assets/validacao/pong.png" alt="Pong no VM Emulator" width="70%">
+<img src="assets/validacao/pong.png" alt="Pong no VM Emulator" width="30%">
 
 | 2 | ComplexArrays | índices aninhados, arrays de arrays | valor esperado igual ao obtido | ✅ |
-<img src="assets/validacao/complexarrays.jpg" alt="ComplexArrays no VM Emulator" width="70%">
+<img src="assets/validacao/complexarrays.jpg" alt="ComplexArrays no VM Emulator" width="30%">
 
 A tag `etapa1` marca o commit em que a geração de código e a entrada por diretório passaram a funcionar.
 
@@ -196,5 +196,5 @@ Em Jack, `expression` é uma sequência `term (op term)*` avaliada da esquerda p
 ## 📚 Desafios e aprendizados
 A geração de código foi a etapa mais complexa do projeto, porque exigiu integrar três componentes já existentes: o parser, a tabela de símbolos e o `VMWriter`. Cada construção de Jack precisa ser traduzida para a pilha da máquina virtual, e um pequeno erro na ordem das instruções só aparece na execução. 
 
-Os seis programas oficiais (`Seven`, `ConvertToBin`, `Square`, `Average`, `Pong` e `ComplexArrays`) foram executados no VM Emulator, e essa execução de inicio demorou um pouco para obter os resultados esperados e confirma que o código gerado funciona de fato. 
+Os seis programas oficiais (`Seven`, `ConvertToBin`, `Square`, `Average`, `Pong` e `ComplexArrays`) foram executados no VM Emulator, e essa execução de inicio demorou um pouco para obter os resultados esperados, mas confirma que o código gerado funciona.
 
