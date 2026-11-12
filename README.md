@@ -4,8 +4,8 @@ Compilador para a linguagem *Jack*, desenvolvido na disciplina de Compiladores.
 Contém scanner, parser (*recursive descent*), tabela de símbolos e **gerador de código VM**, compatível com o VM Emulator do Nand2Tetris (Project 11). Aceita um arquivo `.jack` ou uma **pasta** com várias classes e gera um `.vm` por classe, na mesma pasta.
 
 <p align="center">
-  <img src="assets/analisador_lexico_animado.gif" alt="Analisador Léxico" width="48%">
-  <img src="assets/Sintatico.png" alt="Analisador Sintático" width="48%">
+  <img src="assets/GeradorCodigo.png" alt="Analisador Léxico" width="48%">
+  
 </p>
 
 ## 👥 Integrantes
