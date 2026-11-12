@@ -12,3 +12,5 @@ lib/*.jar
 .vscode/
 .DS_Store
 Thumbs.db
+projects/**/*.vm
+

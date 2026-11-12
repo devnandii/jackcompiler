@@ -29,24 +29,24 @@ public class ParserTest {
     }
 
     @Test
-    public void testSquareJack() throws Exception {
-        JackTokenizer tokenizer = new JackTokenizer("examples/Square.jack");
-        XmlWriter xml = new XmlWriter();
-        CompilationEngine parser = new CompilationEngine(tokenizer, xml);
-        parser.compileClass();
-        
-        String generatedPath = "output/Square.xml";
-        xml.saveToFile(generatedPath);
+public void testSquareJack() throws Exception {
+    JackTokenizer tokenizer = new JackTokenizer("examples/SquareProgram/Square.jack");
+    XmlWriter xml = new XmlWriter();
+    CompilationEngine parser = new CompilationEngine(tokenizer, xml);
+    parser.compileClass();
 
-        String generated = normalizeXml(Files.readString(Paths.get(generatedPath)));
-        String expected = normalizeXml(Files.readString(Paths.get("test/expected_xml/Square.xml")));
+    String generatedPath = "output/Square.xml";
+    xml.saveToFile(generatedPath);
 
-        assertEquals(expected, generated, "A saída do Square.jack difere do oficial.");
+    String generated = normalizeXml(Files.readString(Paths.get(generatedPath)));
+    String expected = normalizeXml(Files.readString(Paths.get("test/expected_xml/Square.xml")));
+
+    assertEquals(expected, generated, "A saída do Square.jack difere do oficial.");
     }
 
     @Test
     public void testSquareGameJack() throws Exception {
-        JackTokenizer tokenizer = new JackTokenizer("examples/SquareGame.jack");
+        JackTokenizer tokenizer = new JackTokenizer("examples/SquareProgram/SquareGame.jack");
         XmlWriter xml = new XmlWriter();
         CompilationEngine parser = new CompilationEngine(tokenizer, xml);
         parser.compileClass();

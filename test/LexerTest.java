@@ -14,7 +14,11 @@ public class LexerTest {
     }
 
     private void assertTokens(String name) throws Exception {
-        JackTokenizer tokenizer = new JackTokenizer("examples/" + name + ".jack");
+        String sourcePath = name.equals("Square")
+    ? "examples/SquareProgram/Square.jack"
+    : "examples/" + name + ".jack";
+
+    JackTokenizer tokenizer = new JackTokenizer(sourcePath);
         XmlWriter xml = new XmlWriter();
         xml.openTag("tokens");
         while (tokenizer.peek() != null) {

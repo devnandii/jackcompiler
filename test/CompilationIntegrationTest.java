@@ -7,7 +7,7 @@ public class CompilationIntegrationTest {
     @Test
     public void testSquareConstructorAndMethods() throws Exception {
         JackTokenizer tokenizer =
-            new JackTokenizer("examples/Square.jack");
+            new JackTokenizer("examples/SquareProgram/Square.jack");
 
         XmlWriter xml = new XmlWriter();
         VMWriter vm = new VMWriter();
